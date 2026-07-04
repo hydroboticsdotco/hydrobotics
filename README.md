@@ -1,56 +1,48 @@
-# Welcome to your Expo app 👋
+# Hydro — MVP1 (Expo / React Native)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Mobile-first embodied data platform. Record real-world task videos with your phone, earn **$HYDRO**.
 
-## Get started
+Built exactly to the MVP1 spec: **Expo (React Native) + expo-router**, with Supabase / on-chain rewards
+stubbed behind a simple data layer so the full experience runs today and real services can be dropped in later.
 
-1. Install dependencies
+## Screens (per spec)
 
-   ```bash
-   npm install
-   ```
+1. **Welcome + Connect Wallet** (`src/app/index.tsx`) — demo wallet connect, persisted locally.
+2. **Task list** (`src/app/tasks.tsx`) — task cards (name, est. duration, reward). Mock data in `src/data/tasks.ts`.
+3. **Record** (`src/app/record.tsx`) — live camera preview (expo-camera), start/stop, live timer.
+4. **Upload confirm + result** (`src/app/upload.tsx`) — L1 auto-check, upload progress bar, "+N $HYDRO" reward.
+5. **Profile** (`src/app/profile.tsx`) — total uploads, total $HYDRO, recent contributions.
 
-2. Start the app
+State (wallet address + contributions) lives in `src/store.tsx`, persisted with AsyncStorage.
 
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run locally
 
 ```bash
-npm run reset-project
+bun install          # or: npm install
+npx expo start       # press i (iOS sim), a (Android), w (web)
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+- iOS Simulator has no camera → the record screen offers a "Simulate a recording" fallback.
+- On a real iPhone (Expo Go or a dev build) the camera records real video.
 
-### Other setup steps
+## What is stubbed (swap in real services later)
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+| Area | Current (MVP1) | Next |
+| --- | --- | --- |
+| Wallet | demo address generated on connect (`store.tsx → connect`) | WalletConnect / Privy |
+| Tasks | local array (`data/tasks.ts`) | Supabase table read |
+| Video upload | simulated progress | Supabase Storage presigned upload |
+| Reward | added locally | Supabase Edge Function → Virtuals/Base token transfer |
 
-## Learn more
+## Ship to TestFlight
 
-To learn more about developing your project with Expo, look at the following resources:
+Use Expo EAS (recommended):
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+npm i -g eas-cli
+eas login
+eas build --platform ios --profile production   # cloud build, no local Xcode headaches
+eas submit --platform ios
+```
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Bundle id is `co.hydrobotics.app` in `app.json` (distinct from the earlier native app so both can coexist on the same Apple account).
