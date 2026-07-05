@@ -1,14 +1,40 @@
+<div align="center">
+
+<img src="assets/images/hydro-logo.png" alt="Hydro" width="120" height="120" />
+
 # Hydro
 
 **Flowing data, shaping physical intelligence.**
 
-Hydro is a mobile app that turns everyday human actions into training data for
-embodied AI. Contributors pick a real-world task (pour water, fold a shirt, plug
-in a cable…), record a short first-person clip, and an AI reviewer verifies the
-clip actually shows the task before crediting **$HYDRO** rewards.
+Crowdsourcing real-world human demonstrations to train embodied AI —
+verified by AI, rewarded in **$HYDRO**.
 
-> MVP1 status: rewards are accounted **off-chain** (in-app balance, claimable to
-> your wallet at token launch). No token is deployed yet.
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg)]()
+[![Built with Expo](https://img.shields.io/badge/built%20with-Expo-000020.svg?logo=expo)](https://expo.dev)
+[![Backend: Supabase](https://img.shields.io/badge/backend-Supabase-3ECF8E.svg?logo=supabase&logoColor=white)](https://supabase.com)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](./CONTRIBUTING.md)
+
+</div>
+
+---
+
+## Overview
+
+**Hydro** turns everyday human actions into high-quality training data for
+embodied AI. Contributors open the app, pick a real-world task (pour water, fold
+a shirt, plug in a cable…), and record a short first-person clip. Every clip is
+run through an **AI quality gate** — a vision model checks that the video
+genuinely performs the task — and only verified contributions are credited with
+**$HYDRO** rewards.
+
+The goal is a fair, spam-resistant data marketplace: humans get paid for
+useful demonstrations, and robotics teams get clean, labeled, task-specific
+video.
+
+> **MVP1 status:** rewards are accounted **off-chain** (an in-app balance,
+> claimable to your wallet at token launch). No token contract is deployed yet —
+> this keeps early testing safe and gas-free.
 
 ---
 
