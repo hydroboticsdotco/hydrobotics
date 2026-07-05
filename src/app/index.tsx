@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { TASKS } from "../data/tasks";
 import { shortAddress, useApp } from "../store";
 import { colors, font, spacing } from "../theme";
@@ -10,14 +10,20 @@ import { isPrivyEnabled } from "../wallet/config";
 
 export default function Welcome() {
   const router = useRouter();
-  const { address, connect, disconnect } = useApp();
+  const { ready, address, connect, disconnect } = useApp();
   const [loading, setLoading] = useState(false);
+
+  // Returning user with a restored session: go straight into the app.
+  useEffect(() => {
+    if (ready && address) router.replace("/home");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, address]);
 
   const onConnect = async () => {
     setLoading(true);
     try {
       await connect();
-      router.push("/tasks");
+      router.replace("/home");
     } finally {
       setLoading(false);
     }
@@ -25,35 +31,43 @@ export default function Welcome() {
 
   const onPrivyConnected = async (addr: string) => {
     await connect(addr);
-    router.push("/tasks");
+    router.replace("/home");
   };
 
   return (
-    <Screen style={styles.wrap}>
-      <View style={styles.hero}>
-        <HydroMark size={84} />
-        <Text style={styles.brand}>Hydro</Text>
-        <Text style={styles.tagline}>
-          Flowing data, shaping physical intelligence.
-        </Text>
-        <Text style={styles.sub}>
-          Record real-world tasks with your phone. Fuel the robots of tomorrow.
-        </Text>
-      </View>
+    <Screen>
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+        showsVerticalScrollIndicator={false}
+      >
+          <View style={styles.hero}>
+            <HydroMark size={84} />
+            <Text style={styles.brand}>Hydro</Text>
+            <Text style={styles.tagline}>
+              Flowing data, shaping physical intelligence.
+            </Text>
+            <Text style={styles.sub}>
+              Record real-world tasks with your phone. Fuel the robots of tomorrow.
+            </Text>
+          </View>
 
-      <View style={styles.stats}>
-        <Card style={styles.statCard}>
-          <Text style={styles.statNum}>{TASKS.length}</Text>
-          <Text style={styles.statLabel}>Tasks live</Text>
-        </Card>
-        <Card style={styles.statCard}>
-          <Text style={styles.statNum}>$HYDRO</Text>
-          <Text style={styles.statLabel}>Earn per upload</Text>
-        </Card>
-      </View>
+          <View style={styles.stats}>
+            <Card style={styles.statCard}>
+              <Text style={styles.statNum}>{TASKS.length}</Text>
+              <Text style={styles.statLabel}>Tasks live</Text>
+            </Card>
+            <Card style={styles.statCard}>
+              <Text style={styles.statNum}>$HYDRO</Text>
+              <Text style={styles.statLabel}>Earn per upload</Text>
+            </Card>
+          </View>
 
-      <View style={styles.footer}>
-        {address ? (
+          <View style={styles.footer}>
+            {address ? (
           <>
             <Card style={styles.walletCard}>
               <View style={styles.dot} />
@@ -62,7 +76,7 @@ export default function Welcome() {
                 Disconnect
               </Text>
             </Card>
-            <PrimaryButton title="Enter →" onPress={() => router.push("/tasks")} />
+            <PrimaryButton title="Enter →" onPress={() => router.replace("/home")} />
           </>
         ) : isPrivyEnabled ? (
           <>
@@ -82,14 +96,21 @@ export default function Welcome() {
               Demo connect for this preview. Real wallet on device build.
             </Text>
           </>
-        )}
-      </View>
+            )}
+          </View>
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { justifyContent: "space-between", paddingVertical: spacing.xl },
+  flex: { flex: 1 },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "space-between",
+    paddingVertical: spacing.xl,
+    gap: spacing.lg,
+  },
   hero: { alignItems: "center", marginTop: spacing.xl, gap: spacing.sm },
   brand: {
     color: colors.text,

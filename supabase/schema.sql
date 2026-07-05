@@ -41,6 +41,12 @@ create table if not exists public.contributions (
   created_at timestamptz not null default now()
 );
 
+-- AI review columns (added in MVP1.1 — safe to re-run).
+alter table public.contributions add column if not exists frame_paths text[] not null default '{}';
+alter table public.contributions add column if not exists ai_score int;
+alter table public.contributions add column if not exists ai_reason text;
+alter table public.contributions add column if not exists reviewed_at timestamptz;
+
 create index if not exists contributions_user_idx on public.contributions (user_id, created_at desc);
 
 -- ---------- Row Level Security ----------

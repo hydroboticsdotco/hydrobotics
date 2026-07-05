@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { type Task } from "../data/tasks";
-import { fetchTasks } from "../lib/api";
-import { useApp } from "../store";
-import { colors, font, radius, spacing } from "../theme";
-import { Pill, Screen } from "../ui";
+import { type Task } from "../../data/tasks";
+import { fetchTasks } from "../../lib/api";
+import { useApp } from "../../store";
+import { colors, font, radius, spacing } from "../../theme";
+import { Pill, Screen } from "../../ui";
 
 export default function Tasks() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export default function Tasks() {
   }, []);
 
   return (
-    <Screen>
+    <Screen edges={["top"]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.hi}>Choose a task</Text>

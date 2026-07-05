@@ -1,25 +1,32 @@
 import React from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   StyleSheet,
   Text,
   View,
   ViewStyle,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, type Edge } from "react-native-safe-area-context";
 import { colors, font, radius, spacing } from "./theme";
 
 export function Screen({
   children,
   style,
+  edges = ["top", "bottom"],
+  padded = true,
 }: {
   children: React.ReactNode;
   style?: ViewStyle;
+  edges?: Edge[];
+  padded?: boolean;
 }) {
   return (
-    <SafeAreaView style={styles.screen} edges={["top", "bottom"]}>
-      <View style={[styles.screenInner, style]}>{children}</View>
+    <SafeAreaView style={styles.screen} edges={edges}>
+      <View style={[padded ? styles.screenInner : styles.screenInnerFlush, style]}>
+        {children}
+      </View>
     </SafeAreaView>
   );
 }
@@ -96,39 +103,26 @@ export function Pill({ label, tone = "default" }: { label: string; tone?: "defau
 }
 
 export function HydroMark({ size = 64 }: { size?: number }) {
-  // Stylized wave "H" mark using two offset bars.
   return (
     <View
       style={{
-        width: size,
-        height: size,
         borderRadius: size * 0.28,
-        backgroundColor: colors.primary,
-        alignItems: "center",
-        justifyContent: "center",
-        boxShadow: "0px 6px 20px rgba(10,132,255,0.5)",
+        shadowColor: colors.primary,
+        shadowOpacity: 0.45,
+        shadowRadius: 12,
+        shadowOffset: { width: 0, height: 6 },
+        elevation: 8,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: size * 0.12 }}>
-        <View
-          style={{
-            width: size * 0.09,
-            height: size * 0.44,
-            borderRadius: size * 0.06,
-            backgroundColor: "#fff",
-            transform: [{ rotate: "12deg" }],
-          }}
-        />
-        <View
-          style={{
-            width: size * 0.09,
-            height: size * 0.44,
-            borderRadius: size * 0.06,
-            backgroundColor: "#fff",
-            transform: [{ rotate: "12deg" }],
-          }}
-        />
-      </View>
+      <Image
+        source={require("../assets/images/hydro-logo.png")}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: size * 0.28,
+        }}
+        resizeMode="cover"
+      />
     </View>
   );
 }
@@ -136,6 +130,7 @@ export function HydroMark({ size = 64 }: { size?: number }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   screenInner: { flex: 1, paddingHorizontal: spacing.lg },
+  screenInnerFlush: { flex: 1 },
   btn: {
     height: 56,
     borderRadius: radius.pill,

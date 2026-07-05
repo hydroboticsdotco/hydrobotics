@@ -97,6 +97,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       status: "rewarded",
       txHash: null,
       videoPath: null,
+      aiScore: null,
+      aiReason: null,
       createdAt: Date.now(),
     };
     const next = [entry, ...contributions];

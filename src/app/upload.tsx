@@ -1,13 +1,19 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
+import * as VideoThumbnails from "expo-video-thumbnails";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, Linking, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, StyleSheet, Text, View } from "react-native";
 import { getTask } from "../data/tasks";
-import { createContribution, requestReward, uploadRecording } from "../lib/api";
+import {
+  createContribution,
+  requestReward,
+  uploadFrame,
+  uploadRecording,
+} from "../lib/api";
 import { useApp } from "../store";
 import { colors, font, radius, spacing } from "../theme";
 import { Card, HydroMark, Pill, PrimaryButton, Screen } from "../ui";
 
-type Phase = "confirm" | "uploading" | "rewarding" | "done" | "error";
+type Phase = "confirm" | "extracting" | "uploading" | "reviewing" | "done" | "error";
 
 export default function Upload() {
   const router = useRouter();
@@ -24,11 +30,14 @@ export default function Upload() {
 
   const [phase, setPhase] = useState<Phase>("confirm");
   const [earned, setEarned] = useState(0);
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("");
+  const [aiScore, setAiScore] = useState<number | null>(null);
+  const [aiReason, setAiReason] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const progress = useRef(new Animated.Value(0)).current;
 
   const tooShort = durationSec > 0 && durationSec < 3;
+  const busy = phase === "extracting" || phase === "uploading" || phase === "reviewing";
 
   useEffect(() => {
     if (phase !== "uploading") return;
@@ -43,45 +52,89 @@ export default function Upload() {
   }, [phase]);
 
   const finishBar = () => {
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
+    Animated.timing(progress, { toValue: 1, duration: 300, useNativeDriver: false }).start();
+  };
+
+  const extractFrames = async (videoUriIn: string): Promise<string[]> => {
+    const fractions = [0.15, 0.5, 0.85];
+    const frames: string[] = [];
+    for (const f of fractions) {
+      const t = durationSec > 0 ? Math.floor(f * durationSec * 1000) : Math.floor(f * 3000);
+      try {
+        const { uri: frameUri } = await VideoThumbnails.getThumbnailAsync(videoUriIn, {
+          time: t,
+          quality: 0.6,
+        });
+        frames.push(frameUri);
+      } catch {
+        // skip a frame we couldn't grab
+      }
+    }
+    return frames;
   };
 
   const run = async () => {
     setErr(null);
-    setPhase("uploading");
     try {
-      if (supabaseReady && userId) {
-        let path: string | null = null;
-        if (videoUri) path = await uploadRecording(userId, task!.id, videoUri);
+      if (supabaseReady && userId && videoUri) {
+        // 1. Extract frames on device for the AI reviewer.
+        setPhase("extracting");
+        const frameUris = await extractFrames(videoUri);
+
+        // 2. Upload video + frames.
+        setPhase("uploading");
+        const videoPath = await uploadRecording(userId, task!.id, videoUri);
+        const framePaths: string[] = [];
+        for (let i = 0; i < frameUris.length; i++) {
+          try {
+            framePaths.push(await uploadFrame(userId, task!.id, frameUris[i], i));
+          } catch {
+            // a failed frame upload is non-fatal
+          }
+        }
         const contribId = await createContribution({
           userId,
           taskId: task!.id,
           wallet: address,
-          videoPath: path,
+          videoPath,
+          framePaths,
           durationSec,
         });
-        setPhase("rewarding");
-        try {
-          const { reward, txHash: hash } = await requestReward(contribId);
-          setEarned(reward);
-          setTxHash(hash);
-        } catch {
-          // Reward pipeline (Edge Function / token) not live yet — the
-          // contribution is safely stored and will be rewarded on review.
-          setEarned(0);
-        }
+        finishBar();
+
+        // 3. AI review + reward decision.
+        setPhase("reviewing");
+        const res = await requestReward(contribId, framePaths);
+        setEarned(res.reward);
+        setStatus(res.status);
+        setAiScore(res.aiScore);
+        setAiReason(res.aiReason);
         await refresh();
+        setPhase("done");
+      } else if (supabaseReady && userId && !videoUri) {
+        // No real video (e.g. simulator): store it, but never auto-reward.
+        setPhase("uploading");
+        const contribId = await createContribution({
+          userId,
+          taskId: task!.id,
+          wallet: address,
+          videoPath: null,
+          framePaths: [],
+          durationSec,
+        });
+        void contribId;
+        setStatus("pending_review");
+        setEarned(0);
+        setAiReason("No video was captured to analyze (simulated run).");
         finishBar();
         setPhase("done");
       } else {
-        // Fallback until Supabase keys are set — keeps the flow usable.
-        await new Promise((r) => setTimeout(r, 1600));
+        // Supabase not configured — local demo fallback.
+        setPhase("uploading");
+        await new Promise((r) => setTimeout(r, 1400));
         const entry = await addLocalContribution(task!, durationSec);
         setEarned(entry.reward);
+        setStatus("rewarded");
         finishBar();
         setPhase("done");
       }
@@ -103,42 +156,72 @@ export default function Upload() {
   const width = progress.interpolate({ inputRange: [0, 1], outputRange: ["0%", "100%"] });
 
   if (phase === "done") {
+    const rewarded = status === "rewarded" && earned > 0;
+    const rejected = status === "rejected";
     return (
       <Screen style={styles.wrap}>
         <View style={styles.center}>
-          <HydroMark size={72} />
-          <Text style={styles.congrats}>Upload complete!</Text>
-          {earned > 0 ? (
+          {rejected ? (
+            <View style={styles.errIcon}>
+              <Text style={styles.errMark}>✕</Text>
+            </View>
+          ) : (
+            <HydroMark size={72} />
+          )}
+
+          <Text style={styles.congrats}>
+            {rewarded ? "Approved & rewarded!" : rejected ? "Not approved" : "Submitted"}
+          </Text>
+
+          {rewarded ? (
             <>
               <View style={styles.rewardBig}>
                 <Text style={styles.rewardBigNum}>+{earned}</Text>
                 <Text style={styles.rewardBigLabel}>$HYDRO</Text>
               </View>
               <Text style={styles.doneSub}>
-                Added to your in-app Hydro balance. Keep contributing to earn
-                more — rewards become claimable at token launch.
+                Our AI reviewed your clip and confirmed it shows “{task.name}”.
+                Added to your in-app balance — claimable at token launch.
               </Text>
             </>
+          ) : rejected ? (
+            <Text style={styles.doneSub}>
+              {aiReason ??
+                "The AI couldn’t confirm this clip clearly shows the task. No reward this time — please re-record following the instructions."}
+            </Text>
           ) : (
             <Text style={styles.doneSub}>
-              Your recording of “{task.name}” was submitted and is queued for
-              quality review. Your $HYDRO reward lands once it’s verified.
+              {aiReason ?? "Your contribution was submitted and is queued for review."}
             </Text>
           )}
-          {txHash ? (
-            <Text
-              style={styles.txLink}
-              onPress={() =>
-                Linking.openURL(`https://sepolia.basescan.org/tx/${txHash}`)
-              }
-            >
-              View transaction ↗
-            </Text>
+
+          {typeof aiScore === "number" ? (
+            <View style={styles.scoreBadge}>
+              <Text style={styles.scoreBadgeLabel}>AI quality score</Text>
+              <Text
+                style={[
+                  styles.scoreBadgeNum,
+                  { color: rejected ? colors.danger : colors.success },
+                ]}
+              >
+                {aiScore}/100
+              </Text>
+            </View>
           ) : null}
+
           <View style={styles.doneBtns}>
-            <PrimaryButton title="Back to tasks" onPress={() => router.replace("/tasks")} />
+            {rejected ? (
+              <PrimaryButton
+                title="Re-record"
+                onPress={() =>
+                  router.replace({ pathname: "/record", params: { taskId: task.id } })
+                }
+              />
+            ) : (
+              <PrimaryButton title="Back to tasks" onPress={() => router.replace("/tasks")} />
+            )}
             <PrimaryButton
-              title="View my contributions"
+              title="View my dashboard"
               variant="ghost"
               onPress={() => router.replace("/profile")}
             />
@@ -170,6 +253,13 @@ export default function Upload() {
     );
   }
 
+  const busyLabel =
+    phase === "extracting"
+      ? "Preparing your clip…"
+      : phase === "uploading"
+        ? "Uploading to Hydro…"
+        : "AI is reviewing your video…";
+
   return (
     <Screen style={styles.wrap}>
       <Text style={styles.h1}>Review your recording</Text>
@@ -188,24 +278,22 @@ export default function Upload() {
       </Card>
 
       <Card style={styles.checks}>
-        <Text style={styles.checksTitle}>Auto quality check (L1)</Text>
-        <CheckRow ok={!!videoUri || phase !== "confirm"} label={videoUri ? "Recording captured" : "No video file (simulated)"} />
+        <Text style={styles.checksTitle}>Before you submit</Text>
+        <CheckRow ok={!!videoUri} label={videoUri ? "Recording captured" : "No video file (simulated)"} />
         <CheckRow ok={!tooShort} label={tooShort ? "Clip is very short (<3s)" : "Length looks good"} />
-        <CheckRow ok label="Metadata attached" />
+        <CheckRow ok label="AI will verify it matches the task" />
       </Card>
 
-      {phase === "uploading" || phase === "rewarding" ? (
+      {busy ? (
         <View style={styles.uploadBox}>
           <View style={styles.barTrack}>
             <Animated.View style={[styles.barFill, { width }]} />
           </View>
-          <Text style={styles.pct}>
-            {phase === "uploading" ? "Uploading to Hydro…" : "Rewarding on-chain…"}
-          </Text>
+          <Text style={styles.pct}>{busyLabel}</Text>
         </View>
       ) : (
         <View style={styles.actions}>
-          <PrimaryButton title="Confirm & upload" onPress={run} />
+          <PrimaryButton title="Confirm & submit" onPress={run} />
           <PrimaryButton
             title="Re-record"
             variant="ghost"
@@ -264,7 +352,6 @@ const styles = StyleSheet.create({
   rewardBig: { flexDirection: "row", alignItems: "baseline", gap: 8 },
   rewardBigNum: { color: colors.success, fontSize: 52, fontWeight: "900" },
   rewardBigLabel: { color: colors.success, fontSize: font.title, fontWeight: "800" },
-  txLink: { color: colors.primary, fontSize: font.body, fontWeight: "600" },
   doneSub: {
     color: colors.textDim,
     fontSize: font.body,
@@ -272,6 +359,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     lineHeight: 22,
   },
+  scoreBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
+  scoreBadgeLabel: { color: colors.textDim, fontSize: font.small },
+  scoreBadgeNum: { fontSize: font.heading, fontWeight: "800" },
   doneBtns: { alignSelf: "stretch", gap: spacing.md, marginTop: spacing.lg },
   errIcon: {
     width: 64,

@@ -10,6 +10,8 @@ export type ContributionRow = {
   status: string;
   txHash: string | null;
   videoPath: string | null;
+  aiScore: number | null;
+  aiReason: string | null;
   createdAt: number;
 };
 
@@ -43,7 +45,9 @@ export async function fetchContributions(userId: string): Promise<ContributionRo
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("contributions")
-    .select("id,task_id,duration_sec,reward,status,tx_hash,video_path,created_at,tasks(name)")
+    .select(
+      "id,task_id,duration_sec,reward,status,tx_hash,video_path,ai_score,ai_reason,created_at,tasks(name)"
+    )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(50);
@@ -57,6 +61,8 @@ export async function fetchContributions(userId: string): Promise<ContributionRo
     status: r.status,
     txHash: r.tx_hash,
     videoPath: r.video_path,
+    aiScore: r.ai_score ?? null,
+    aiReason: r.ai_reason ?? null,
     createdAt: new Date(r.created_at).getTime(),
   }));
 }
@@ -80,11 +86,31 @@ export async function uploadRecording(
   return path;
 }
 
+/** Uploads a single extracted video frame (jpeg) for AI review. */
+export async function uploadFrame(
+  userId: string,
+  taskId: string,
+  uri: string,
+  index: number
+): Promise<string> {
+  if (!supabase) throw new Error("Supabase not configured");
+  const res = await fetch(uri);
+  const bytes = await res.arrayBuffer();
+  const path = `${userId}/frames/${taskId}-${Date.now()}-${index}.jpg`;
+  const { error } = await supabase.storage.from("recordings").upload(path, bytes, {
+    contentType: "image/jpeg",
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
 export async function createContribution(params: {
   userId: string;
   taskId: string;
   wallet: string | null;
   videoPath: string | null;
+  framePaths: string[];
   durationSec: number;
 }): Promise<string> {
   if (!supabase) throw new Error("Supabase not configured");
@@ -95,6 +121,7 @@ export async function createContribution(params: {
       task_id: params.taskId,
       wallet_address: params.wallet,
       video_path: params.videoPath,
+      frame_paths: params.framePaths,
       duration_sec: params.durationSec,
       status: "pending_review",
     })
@@ -104,18 +131,33 @@ export async function createContribution(params: {
   return data.id as string;
 }
 
+export type RewardResult = {
+  reward: number;
+  txHash: string | null;
+  status: string; // rewarded | rejected
+  aiScore: number | null;
+  aiReason: string | null;
+};
+
 /**
- * Triggers the on-chain reward. The `reward` Edge Function (service role)
- * validates the contribution, transfers $HYDRO from the treasury wallet on
- * Base, and updates the row with reward + tx_hash. Returns {reward, txHash}.
+ * Triggers AI review + reward. The `reward` Edge Function (service role)
+ * downloads the uploaded frames, asks a vision model whether the clip truly
+ * shows the task, and only credits $HYDRO if it passes. Returns the verdict.
  */
 export async function requestReward(
-  contributionId: string
-): Promise<{ reward: number; txHash: string | null }> {
+  contributionId: string,
+  framePaths: string[]
+): Promise<RewardResult> {
   if (!supabase) throw new Error("Supabase not configured");
   const { data, error } = await supabase.functions.invoke("reward", {
-    body: { contribution_id: contributionId },
+    body: { contribution_id: contributionId, frame_paths: framePaths },
   });
   if (error) throw error;
-  return { reward: data?.reward ?? 0, txHash: data?.tx_hash ?? null };
+  return {
+    reward: data?.reward ?? 0,
+    txHash: data?.tx_hash ?? null,
+    status: data?.status ?? "pending_review",
+    aiScore: data?.ai_score ?? null,
+    aiReason: data?.ai_reason ?? null,
+  };
 }

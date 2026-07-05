@@ -43,3 +43,8 @@ example
 /ios
 /android
 .secrets/
+
+# Foundry (token/) build artifacts
+token/out/
+token/cache/
+token/broadcast/
